@@ -12,11 +12,15 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { OrdersScreen } from '../screens/OrdersScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { CreateOrderScreen } from '../screens/CreateOrderScreen';
+import OnboardingScreen from '../screens/Onboarding/OnboardingScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Main Tab Navigator
+/**
+ * Main Tab Navigator
+ * Нижняя табулята навигация: Home, Orders, Profile
+ */
 const MainTabs = () => {
   const { t } = useTranslation();
 
@@ -55,65 +59,118 @@ const MainTabs = () => {
       <Tab.Screen
         name="Home"
         component={HomeScreen}
-        options={{ tabBarLabel: t('home') }}
+        options={{ title: t('navigation.home') }}
       />
       <Tab.Screen
         name="Orders"
         component={OrdersScreen}
-        options={{ tabBarLabel: t('orders') }}
+        options={{ title: t('navigation.orders') }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ tabBarLabel: t('profile') }}
+        options={{ title: t('navigation.profile') }}
       />
     </Tab.Navigator>
   );
 };
 
-// Auth Stack Navigator
-export const AuthNavigator = () => {
+/**
+ * Auth Stack Navigator
+ * Экраны авторизации: Welcome, Registration, SmsAuth, Onboarding
+ */
+export const AuthNavigator = ({ isOnboarding = false, onOnboardingComplete = null }) => {
   return (
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
+        animationEnabled: true,
       }}
+      // Если это первый запуск (онбординг) — начинаем с Onboarding
+      initialRouteName={isOnboarding ? 'Onboarding' : 'Welcome'}
     >
-      <Stack.Screen name="Welcome" component={WelcomeScreen} />
-      <Stack.Screen name="Registration" component={RegistrationScreen} />
-      <Stack.Screen name="SmsAuth" component={SmsAuthScreen} />
+      {/* ОНБОРДИНГ — показывается только при первом запуске */}
+      {isOnboarding && (
+        <Stack.Screen
+          name="Onboarding"
+          component={OnboardingScreen}
+          options={{
+            headerShown: false,
+            animationEnabled: false,
+          }}
+          listeners={({ navigation }) => ({
+            beforeRemove: (e) => {
+              // Передаём callback при завершении онбординга
+              if (onOnboardingComplete) {
+                onOnboardingComplete();
+              }
+            },
+          })}
+        />
+      )}
+
+      {/* АВТОРИЗАЦИЯ */}
+      <Stack.Screen
+        name="Welcome"
+        component={WelcomeScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+
+      <Stack.Screen
+        name="Registration"
+        component={RegistrationScreen}
+        options={{
+          headerShown: true,
+          title: 'Регистрация',
+          headerBackTitleVisible: false,
+        }}
+      />
+
+      <Stack.Screen
+        name="SmsAuth"
+        component={SmsAuthScreen}
+        options={{
+          headerShown: true,
+          title: 'Подтверждение',
+          headerBackTitleVisible: false,
+        }}
+      />
     </Stack.Navigator>
   );
 };
 
-// Main Stack Navigator
+/**
+ * Main Stack Navigator
+ * Главное приложение после авторизации
+ */
 export const MainNavigator = () => {
   const { t } = useTranslation();
 
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: {
-          backgroundColor: '#fff',
-        },
-        headerTintColor: '#333',
-        headerTitleStyle: {
-          fontWeight: '700',
-        },
-        headerShadowVisible: false,
+        headerShown: true,
+        headerBackTitleVisible: false,
       }}
     >
+      {/* Табулята навигация: Home, Orders, Profile */}
       <Stack.Screen
         name="MainTabs"
         component={MainTabs}
-        options={{ headerShown: false }}
+        options={{
+          headerShown: false,
+        }}
       />
+
+      {/* Экран создания заказа */}
       <Stack.Screen
         name="CreateOrder"
         component={CreateOrderScreen}
         options={{
-          title: t('createOrder'),
-          presentation: 'modal',
+          title: t('screens.createOrder') || 'Создать заказ',
+          headerShown: true,
         }}
       />
     </Stack.Navigator>
