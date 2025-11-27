@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { OrderProvider } from './src/contexts/OrderContext';
+import { PaymentProvider } from './src/contexts/PaymentContext'; // ← ДОБАВИЛИ
 import { AuthNavigator, MainNavigator } from './src/navigation/AppNavigator';
 import './i18n';
 
@@ -85,7 +86,9 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <OrderProvider>
-            <RootNavigator />
+            <PaymentProvider>              {/* ← ДОБАВИЛИ СЮДА */}
+              <RootNavigator />
+            </PaymentProvider>             {/* ← ЗАКРЫЛИ СЮДА */}
           </OrderProvider>
         </AuthProvider>
       </QueryClientProvider>

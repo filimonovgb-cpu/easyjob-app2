@@ -1,0 +1,73 @@
+// src/firebase/firestore.rules
+// Правила безопасности для Firestore
+// Скопируй это в Firebase Console → Firestore → Rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Пользователи (профили)
+    match /users/{userId} {
+      allow read: if request.auth.uid == userId;
+      allow write: if request.auth.uid == userId;
+      
+      // Кошельки (приватно)
+      match /wallet/{walletId} {
+        allow read: if request.auth.uid == userId;
+        allow write: if request.auth.uid == userId;
+      }
+    }
+    
+    // Заказы
+    match /orders/{orderId} {
+      // Клиент может читать свои заказы
+      allow read: if request.auth.uid == resource.data.clientId;
+      // Клиент может создавать заказы
+      allow create: if request.auth != null;
+      // Клиент может обновлять свои заказы
+      allow update: if request.auth.uid == resource.data.clientId;
+    }
+    
+    // Отклики (выполнить фильтрацию на клиенте или бэке)
+    match /responses/{responseId} {
+      allow read: if request.auth.uid == resource.data.contractorId 
+                     || request.auth.uid == resource.data.clientId;
+      allow create: if request.auth != null;
+      allow update: if request.auth.uid == resource.data.contractorId 
+                       || request.auth.uid == resource.data.clientId;
+    }
+    
+    // Сделки (приватно)
+    match /deals/{dealId} {
+      allow read: if request.auth.uid == resource.data.clientId 
+                     || request.auth.uid == resource.data.contractorId;
+      allow create: if request.auth != null;
+      allow update: if request.auth.uid == resource.data.clientId 
+                       || request.auth.uid == resource.data.contractorId;
+    }
+    
+    // Платежи (приватно)
+    match /payments/{paymentId} {
+      allow read: if request.auth.uid == resource.data.userId;
+      allow write: if request.auth.uid == resource.data.userId;
+    }
+    
+    // Транзакции (приватно)
+    match /transactions/{transactionId} {
+      allow read: if request.auth.uid == resource.data.userId;
+      allow write: if request.auth.uid == resource.data.userId;
+    }
+    
+    // Категории (публично)
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    // Рецензии (публично читаемые)
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}
