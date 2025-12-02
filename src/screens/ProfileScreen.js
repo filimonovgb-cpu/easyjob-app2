@@ -3,12 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   Image,
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context'; // ← ИСПРАВЛЕНО
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,10 +28,9 @@ export const ProfileScreen = ({ navigation }) => {
         style: 'destructive',
         onPress: async () => {
           await logout();
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Welcome' }],
-          });
+
+          // ❗ RootNavigator автоматически переключит на AuthNavigator.
+          // ❗ Удалили некорректный navigation.reset({ name: "Welcome" })
         },
       },
     ]);
@@ -62,6 +61,7 @@ export const ProfileScreen = ({ navigation }) => {
           <Text style={styles.role}>
             {role === 'client' ? t('client') : t('executor')}
           </Text>
+
           {category && (
             <View style={styles.categoryBadge}>
               <Ionicons name={category.icon} size={16} color={category.color} />
@@ -75,6 +75,7 @@ export const ProfileScreen = ({ navigation }) => {
             <Ionicons name="call-outline" size={20} color="#666" />
             <Text style={styles.infoText}>{user?.phone}</Text>
           </View>
+
           {role === 'executor' && (
             <>
               <View style={styles.infoRow}>
@@ -83,6 +84,7 @@ export const ProfileScreen = ({ navigation }) => {
                   {user?.rating || '5.0'} ({user?.reviews || '0'} {t('reviews')})
                 </Text>
               </View>
+
               <View style={styles.infoRow}>
                 <Ionicons name="briefcase-outline" size={20} color="#666" />
                 <Text style={styles.infoText}>

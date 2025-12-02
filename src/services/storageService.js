@@ -5,7 +5,7 @@ const KEYS = {
   USER_ROLE: '@user_role',
   AUTH_TOKEN: '@auth_token',
   ORDERS: '@orders',
-  PROFESSIONALS: '@professionals'
+  PROFESSIONALS: '@professionals',
 };
 
 class StorageService {

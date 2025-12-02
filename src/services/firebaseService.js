@@ -60,13 +60,11 @@ const storage = getStorage(app);
  */
 
 export const authService = {
-  // Регистрация с email/password
   register: async (email, password, userData) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Сохраняем профиль в Firestore
       await setDoc(doc(db, 'users', user.uid), {
         uid: user.uid,
         email: user.email,
@@ -82,7 +80,6 @@ export const authService = {
     }
   },
 
-  // Вход
   login: async (email, password) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -93,7 +90,6 @@ export const authService = {
     }
   },
 
-  // Выход
   logout: async () => {
     try {
       await signOut(auth);
@@ -104,12 +100,10 @@ export const authService = {
     }
   },
 
-  // Получить текущего пользователя
   getCurrentUser: () => {
     return auth.currentUser;
   },
 
-  // Подписка на изменение auth состояния
   onAuthStateChange: (callback) => {
     return onAuthStateChanged(auth, callback);
   },
@@ -120,12 +114,11 @@ export const authService = {
  */
 
 export const userService = {
-  // Получить профиль пользователя
   getUserProfile: async (userId) => {
     try {
       const userDoc = await getDoc(doc(db, 'users', userId));
       if (userDoc.exists()) {
-        return { success: true,  userDoc.data() };
+        return { success: true, data: userDoc.data() };
       }
       return { success: false, error: 'User not found' };
     } catch (error) {
@@ -134,7 +127,6 @@ export const userService = {
     }
   },
 
-  // Обновить профиль
   updateUserProfile: async (userId, updates) => {
     try {
       await updateDoc(doc(db, 'users', userId), {
@@ -148,29 +140,28 @@ export const userService = {
     }
   },
 
-  // Получить баланс пользователя
   getUserBalance: async (userId) => {
     try {
       const walletDoc = await getDoc(doc(db, 'users', userId, 'wallet', 'main'));
       if (walletDoc.exists()) {
-        return { success: true,  walletDoc.data() };
+        return { success: true, data: walletDoc.data() };
       }
-      // Если кошелька нет, создаём новый
+
       const newWallet = {
         balance: 0,
         frozen: { total: 0, byDeal: {} },
         transactionHistory: [],
         createdAt: serverTimestamp(),
       };
+
       await setDoc(doc(db, 'users', userId, 'wallet', 'main'), newWallet);
-      return { success: true,  newWallet };
+      return { success: true, data: newWallet };
     } catch (error) {
       console.error('Error getting balance:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // Получить список пользователей по типу (clients/contractors)
   getUsersByType: async (userType, limitCount = 100) => {
     try {
       const q = query(
@@ -179,8 +170,8 @@ export const userService = {
         limit(limitCount)
       );
       const snapshot = await getDocs(q);
-      const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      return { success: true,  users };
+      const users = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return { success: true, users };
     } catch (error) {
       console.error('Error getting users by type:', error);
       return { success: false, error: error.message };
@@ -193,7 +184,6 @@ export const userService = {
  */
 
 export const orderService = {
-  // Создать заказ
   createOrder: async (clientId, orderData) => {
     try {
       const orderId = `order_${Date.now()}`;
@@ -209,16 +199,14 @@ export const orderService = {
         latitude: orderData.latitude,
         longitude: orderData.longitude,
         address: orderData.address,
-        executionTime: orderData.executionTime, // Когда нужно выполнить
-        duration: orderData.duration, // Сколько времени займёт
-        
+        executionTime: orderData.executionTime,
+        duration: orderData.duration,
         status: 'created',
-        topContractors: [], // Будут заполнены AI
-        responseDeadline: new Date(Date.now() + 30 * 60 * 1000), // +30 минут
+        topContractors: [],
+        responseDeadline: new Date(Date.now() + 30 * 60 * 1000),
         responsesLimit: 10,
         responsesCount: 0,
         selectedContractorId: null,
-        
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -230,12 +218,11 @@ export const orderService = {
     }
   },
 
-  // Получить заказ по ID
   getOrder: async (orderId) => {
     try {
       const orderDoc = await getDoc(doc(db, 'orders', orderId));
       if (orderDoc.exists()) {
-        return { success: true,  orderDoc.data() };
+        return { success: true, data: orderDoc.data() };
       }
       return { success: false, error: 'Order not found' };
     } catch (error) {
@@ -244,7 +231,6 @@ export const orderService = {
     }
   },
 
-  // Получить все заказы клиента
   getClientOrders: async (clientId) => {
     try {
       const q = query(
@@ -253,28 +239,26 @@ export const orderService = {
         orderBy('createdAt', 'desc')
       );
       const snapshot = await getDocs(q);
-      const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      return { success: true,  orders };
+      const orders = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return { success: true, orders };
     } catch (error) {
       console.error('Error getting client orders:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // Получить активные заказы в радиусе (для исполнителей)
   getActiveOrdersNearby: async (latitude, longitude, radiusKm = 5) => {
     try {
       const q = query(
         collection(db, 'orders'),
         where('status', '==', 'created'),
         orderBy('createdAt', 'desc'),
-        limit(50) // Потом фильтруем по расстоянию в коде
+        limit(50)
       );
       const snapshot = await getDocs(q);
       const orders = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(order => {
-          // Простой расчёт расстояния (Haversine formula можно улучшить)
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((order) => {
           const distance = calculateDistance(
             latitude,
             longitude,
@@ -283,14 +267,13 @@ export const orderService = {
           );
           return distance <= radiusKm;
         });
-      return { success: true,  orders };
+      return { success: true, orders };
     } catch (error) {
       console.error('Error getting orders nearby:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // Обновить заказ
   updateOrder: async (orderId, updates) => {
     try {
       await updateDoc(doc(db, 'orders', orderId), {
@@ -304,7 +287,6 @@ export const orderService = {
     }
   },
 
-  // Установить ТОП-5 исполнителей для заказа (вызывается из Cloud Function)
   setTopContractors: async (orderId, contractorIds) => {
     try {
       await updateDoc(doc(db, 'orders', orderId), {
@@ -323,7 +305,6 @@ export const orderService = {
  */
 
 export const responseService = {
-  // Создать отклик
   createResponse: async (orderId, contractorId, proposedPrice, message = '') => {
     try {
       const responseId = `response_${Date.now()}`;
@@ -335,14 +316,11 @@ export const responseService = {
         contractorId,
         proposedPrice,
         message,
-        
-        status: 'sent', // sent, accepted, rejected, cancelled
-        
+        status: 'sent',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
-      // Увеличить счётчик откликов на заказе
       await updateDoc(doc(db, 'orders', orderId), {
         responsesCount: increment(1),
       });
@@ -354,7 +332,6 @@ export const responseService = {
     }
   },
 
-  // Получить все отклики на заказ
   getOrderResponses: async (orderId) => {
     try {
       const q = query(
@@ -363,15 +340,14 @@ export const responseService = {
         orderBy('createdAt', 'desc')
       );
       const snapshot = await getDocs(q);
-      const responses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      return { success: true,  responses };
+      const responses = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return { success: true, responses };
     } catch (error) {
       console.error('Error getting responses:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // Получить отклики исполнителя
   getContractorResponses: async (contractorId) => {
     try {
       const q = query(
@@ -380,15 +356,14 @@ export const responseService = {
         orderBy('createdAt', 'desc')
       );
       const snapshot = await getDocs(q);
-      const responses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      return { success: true,  responses };
+      const responses = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return { success: true, responses };
     } catch (error) {
       console.error('Error getting contractor responses:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // Обновить статус отклика
   updateResponseStatus: async (responseId, status) => {
     try {
       await updateDoc(doc(db, 'responses', responseId), {
@@ -397,7 +372,7 @@ export const responseService = {
       });
       return { success: true };
     } catch (error) {
-      console.error('Error updating response:', error);
+      console.error('Error updating response status:', error);
       return { success: false, error: error.message };
     }
   },
@@ -408,13 +383,11 @@ export const responseService = {
  */
 
 export const dealService = {
-  // Создать сделку (когда клиент выбирает исполнителя)
   createDeal: async (orderId, clientId, contractorId, agreedPrice, executionTime) => {
     try {
       const dealId = `deal_${Date.now()}`;
       const dealRef = doc(db, 'deals', dealId);
 
-      // Рассчитываем deadline для отмены (за 45 минут до выполнения)
       const cancellationDeadline = new Date(executionTime.getTime() - 45 * 60 * 1000);
 
       await setDoc(dealRef, {
@@ -422,21 +395,16 @@ export const dealService = {
         orderId,
         clientId,
         contractorId,
-        
         agreedPrice,
         commission: {
-          client: 15, // Клиент платит 15₽
-          contractor: 0, // Будет 0 или 15 в зависимости от количества сделок
+          client: 15,
+          contractor: 0,
         },
-        
         executionTime,
         cancellationDeadline,
-        
         clientContactsUnlocked: false,
         contractorContactsUnlocked: false,
-        
-        status: 'accepted', // accepted -> confirmed -> in_progress -> completed
-        
+        status: 'accepted',
         cancellation: {
           reason: null,
           cancelledBy: null,
@@ -447,9 +415,7 @@ export const dealService = {
             reason: null,
           },
         },
-        
         payments: [],
-        
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -461,12 +427,11 @@ export const dealService = {
     }
   },
 
-  // Получить сделку
   getDeal: async (dealId) => {
     try {
       const dealDoc = await getDoc(doc(db, 'deals', dealId));
       if (dealDoc.exists()) {
-        return { success: true,  dealDoc.data() };
+        return { success: true, data: dealDoc.data() };
       }
       return { success: false, error: 'Deal not found' };
     } catch (error) {
@@ -475,7 +440,6 @@ export const dealService = {
     }
   },
 
-  // Получить все сделки клиента
   getClientDeals: async (clientId) => {
     try {
       const q = query(
@@ -484,15 +448,14 @@ export const dealService = {
         orderBy('createdAt', 'desc')
       );
       const snapshot = await getDocs(q);
-      const deals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      return { success: true,  deals };
+      const deals = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return { success: true, deals };
     } catch (error) {
       console.error('Error getting client deals:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // Получить все сделки исполнителя
   getContractorDeals: async (contractorId) => {
     try {
       const q = query(
@@ -501,15 +464,14 @@ export const dealService = {
         orderBy('createdAt', 'desc')
       );
       const snapshot = await getDocs(q);
-      const deals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      return { success: true,  deals };
+      const deals = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return { success: true, deals };
     } catch (error) {
       console.error('Error getting contractor deals:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // Обновить статус сделки
   updateDealStatus: async (dealId, status) => {
     try {
       await updateDoc(doc(db, 'deals', dealId), {
@@ -523,7 +485,6 @@ export const dealService = {
     }
   },
 
-  // Разблокировать контакты клиента
   unlockClientContacts: async (dealId) => {
     try {
       await updateDoc(doc(db, 'deals', dealId), {
@@ -537,7 +498,6 @@ export const dealService = {
     }
   },
 
-  // Разблокировать контакты исполнителя
   unlockContractorContacts: async (dealId) => {
     try {
       await updateDoc(doc(db, 'deals', dealId), {
@@ -557,7 +517,6 @@ export const dealService = {
  */
 
 export const paymentService = {
-  // Создать платёж
   createPayment: async (dealId, userId, type, amount) => {
     try {
       const paymentId = `payment_${Date.now()}`;
@@ -567,9 +526,9 @@ export const paymentService = {
         id: paymentId,
         dealId,
         userId,
-        type, // 'confirmation' (15₽) или 'service' (основная сумма)
+        type,
         amount,
-        status: 'pending', // pending, completed, failed, refunded
+        status: 'pending',
         createdAt: serverTimestamp(),
       });
 
@@ -580,23 +539,18 @@ export const paymentService = {
     }
   },
 
-  // Получить платежи сделки
   getDealPayments: async (dealId) => {
     try {
-      const q = query(
-        collection(db, 'payments'),
-        where('dealId', '==', dealId)
-      );
+      const q = query(collection(db, 'payments'), where('dealId', '==', dealId));
       const snapshot = await getDocs(q);
-      const payments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      return { success: true,  payments };
+      const payments = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return { success: true, payments };
     } catch (error) {
       console.error('Error getting deal payments:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // Обновить статус платежа
   updatePaymentStatus: async (paymentId, status) => {
     try {
       await updateDoc(doc(db, 'payments', paymentId), {
@@ -616,7 +570,6 @@ export const paymentService = {
  */
 
 export const transactionService = {
-  // Записать транзакцию
   recordTransaction: async (userId, type, amount, relatedDealId, description) => {
     try {
       const transactionId = `transaction_${Date.now()}`;
@@ -625,7 +578,7 @@ export const transactionService = {
       await setDoc(transactionRef, {
         id: transactionId,
         userId,
-        type, // 'commission', 'payment', 'refund', 'penalty', 'withdrawal'
+        type,
         amount,
         dealId: relatedDealId,
         description,
@@ -640,7 +593,6 @@ export const transactionService = {
     }
   },
 
-  // Получить историю транзакций пользователя
   getUserTransactions: async (userId, limitCount = 50) => {
     try {
       const q = query(
@@ -650,8 +602,8 @@ export const transactionService = {
         limit(limitCount)
       );
       const snapshot = await getDocs(q);
-      const transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      return { success: true,  transactions };
+      const transactions = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return { success: true, transactions };
     } catch (error) {
       console.error('Error getting user transactions:', error);
       return { success: false, error: error.message };
@@ -663,9 +615,8 @@ export const transactionService = {
  * ========== UTILITY FUNCTIONS ==========
  */
 
-// Haversine formula для расчёта расстояния между координатами
 export const calculateDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371; // Радиус Земли в км
+  const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -677,6 +628,8 @@ export const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
+
+export { db, auth, storage };
 
 export default {
   authService,

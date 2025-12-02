@@ -12,6 +12,8 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { OrdersScreen } from '../screens/OrdersScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { CreateOrderScreen } from '../screens/CreateOrderScreen';
+import { OrderDetailScreen } from '../screens/OrderDetailScreen';
+import { ProfessionalDetailScreen } from '../screens/ProfessionalDetailScreen';
 import OnboardingScreen from '../screens/Onboarding/OnboardingScreen';
 
 const Stack = createNativeStackNavigator();
@@ -86,10 +88,8 @@ export const AuthNavigator = ({ isOnboarding = false, onOnboardingComplete = nul
         headerShown: false,
         animationEnabled: true,
       }}
-      // Если это первый запуск (онбординг) — начинаем с Onboarding
       initialRouteName={isOnboarding ? 'Onboarding' : 'Welcome'}
     >
-      {/* ОНБОРДИНГ — показывается только при первом запуске */}
       {isOnboarding && (
         <Stack.Screen
           name="Onboarding"
@@ -98,9 +98,8 @@ export const AuthNavigator = ({ isOnboarding = false, onOnboardingComplete = nul
             headerShown: false,
             animationEnabled: false,
           }}
-          listeners={({ navigation }) => ({
-            beforeRemove: (e) => {
-              // Передаём callback при завершении онбординга
+          listeners={() => ({
+            beforeRemove: () => {
               if (onOnboardingComplete) {
                 onOnboardingComplete();
               }
@@ -109,7 +108,6 @@ export const AuthNavigator = ({ isOnboarding = false, onOnboardingComplete = nul
         />
       )}
 
-      {/* АВТОРИЗАЦИЯ */}
       <Stack.Screen
         name="Welcome"
         component={WelcomeScreen}
@@ -170,6 +168,26 @@ export const MainNavigator = () => {
         component={CreateOrderScreen}
         options={{
           title: t('screens.createOrder') || 'Создать заказ',
+          headerShown: true,
+        }}
+      />
+
+      {/* Экран деталей заказа */}
+      <Stack.Screen
+        name="OrderDetail"
+        component={OrderDetailScreen}
+        options={{
+          title: t('screens.orderDetail') || 'Детали заказа',
+          headerShown: true,
+        }}
+      />
+
+      {/* Экран деталей специалиста */}
+      <Stack.Screen
+        name="ProfessionalDetail"
+        component={ProfessionalDetailScreen}
+        options={{
+          title: t('screens.professionalDetail') || 'Профиль специалиста',
           headerShown: true,
         }}
       />

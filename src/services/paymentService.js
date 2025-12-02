@@ -1,31 +1,9 @@
 // src/services/paymentService.js
 
-/**
- * Payment Service
- * Интеграция с YooKassa для платежей
- * 15₽ за подтверждение, основная сумма за услуги, штрафы
- */
-
 import axios from 'axios';
 
-/**
- * YooKassa Settings
- * 
- * Тебе нужно:
- * 1. Зарегистрироваться на https://yookassa.ru/
- * 2. Получить Shop ID и Secret Key
- * 3. Заменить YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY
- * 
- * Для тестирования:
- * - Shop ID: 148597 (тестовый)
- * - Secret Key: test_secret
- * 
- * Для продакшена:
- * - Получить реальные от YooKassa
- */
-
-const YOOKASSA_SHOP_ID = process.env.EXPO_PUBLIC_YOOKASSA_SHOP_ID || '148597'; // Тестовый
-const YOOKASSA_SECRET_KEY = process.env.EXPO_PUBLIC_YOOKASSA_SECRET_KEY || 'test_secret'; // Тестовый
+const YOOKASSA_SHOP_ID = process.env.EXPO_PUBLIC_YOOKASSA_SHOP_ID || '148597';
+const YOOKASSA_SECRET_KEY = process.env.EXPO_PUBLIC_YOOKASSA_SECRET_KEY || 'test_secret';
 const YOOKASSA_API_URL = 'https://api.yookassa.ru/v3/payments';
 
 // Base64 encode для Basic Auth
@@ -38,15 +16,10 @@ const getAuthHeader = () => {
 class PaymentService {
   /**
    * СОЗДАТЬ ПЛАТЁЖ
-   * Инициирует платёж в YooKassa
-   * 
-   * @param {number} amount - сумма в рублях (15 или больше)
-   * @param {string} description - описание платежа
-   * @param {object} metadata - данные о сделке
    */
   async createPayment(amount, description, metadata = {}) {
     try {
-      const idempotenceKey = `${Date.now()}_${Math.random()}`; // Уникальный ключ
+      const idempotenceKey = `${Date.now()}_${Math.random()}`;
 
       const paymentData = {
         amount: {
@@ -54,11 +27,11 @@ class PaymentService {
           currency: 'RUB',
         },
         confirmation: {
-          type: 'redirect', // Для мобильного приложения используем redirect
-          return_url: 'easyjob://payment-success', // Custom URL scheme
+          type: 'redirect',
+          return_url: 'easyjob://payment-success',
         },
         description,
-        metadata, // Передаём dealId, userId и т.д.
+        metadata,
         receipt: {
           customer: {
             email: metadata.customerEmail || 'customer@easyjob.ru',
@@ -71,7 +44,7 @@ class PaymentService {
                 value: amount.toFixed(2),
                 currency: 'RUB',
               },
-              vat_code: '1', // Без НДС
+              vat_code: '1',
             },
           ],
         },
@@ -90,7 +63,7 @@ class PaymentService {
         paymentId: response.data.id,
         confirmationUrl: response.data.confirmation.confirmation_url,
         status: response.data.status,
-         response.data,
+        ...response.data,  // ← Исправлено
       };
     } catch (error) {
       console.error('Error creating payment:', error);
@@ -102,9 +75,7 @@ class PaymentService {
   }
 
   /**
-   * ПОДТВЕРДИТЬ ПЛАТЁЖ
-   * 15₽ за подтверждение выбора исполнителя
-   * Вызывается после выбора исполнителя клиентом
+   * ПОДТВЕРДИТЬ ПЛАТЁЖ (15₽)
    */
   async confirmSelectionPayment(userId, dealId, customerEmail) {
     try {
@@ -125,9 +96,7 @@ class PaymentService {
   }
 
   /**
-   * ОПЛАТИТЬ УСЛУГУ
-   * Основной платёж за услугу исполнителя
-   * Вызывается сразу после выбора (замораживается)
+   * ОСНОВНОЙ ПЛАТЁЖ ЗА УСЛУГУ
    */
   async servicePayment(userId, contractorId, dealId, amount, customerEmail) {
     try {
@@ -148,8 +117,7 @@ class PaymentService {
   }
 
   /**
-   * ПОЛУЧИТЬ СТАТУС ПЛАТЕЖА
-   * Проверяем, прошёл ли платёж
+   * СТАТУС ПЛАТЕЖА
    */
   async getPaymentStatus(paymentId) {
     try {
@@ -162,9 +130,9 @@ class PaymentService {
       return {
         success: true,
         paymentId: response.data.id,
-        status: response.data.status, // pending, succeeded, failed, cancelled
+        status: response.data.status,
         amount: response.data.amount.value,
-         response.data,
+        ...response.data,  // ← Исправлено
       };
     } catch (error) {
       console.error('Error getting payment status:', error);
@@ -176,13 +144,11 @@ class PaymentService {
   }
 
   /**
-   * ВЕРНУТЬ ПЛАТЁЖ (РЕФАНД)
-   * Если сделка отменена в течение 45 минут (без штрафа)
+   * РЕФАНД (ВОЗВРАТ)
    */
   async refundPayment(paymentId, amount, reason = 'Deal cancelled') {
     try {
       const idempotenceKey = `refund_${Date.now()}_${Math.random()}`;
-
       const refundData = {
         amount: {
           value: amount.toFixed(2),
@@ -208,6 +174,7 @@ class PaymentService {
         refundId: response.data.id,
         status: response.data.status,
         amount: response.data.amount.value,
+        ...response.data,  // ← Исправлено
       };
     } catch (error) {
       console.error('Error refunding payment:', error);
@@ -219,16 +186,10 @@ class PaymentService {
   }
 
   /**
-   * WEBHOOK HANDLER
-   * YooKassa отправляет уведомления о статусе платежей сюда
-   * Это должно быть на backend'е (Firebase Cloud Function)
-   * 
-   * СИМУЛЯЦИЯ для тестирования в мобильном приложении
+   * СИМУЛЯЦИЯ WEBHOOK
    */
   async simulateWebhook(paymentId, status) {
     try {
-      // В реальности это приходит с сервера YooKassa
-      // Здесь мы симулируем для тестирования
       console.log(`[WEBHOOK] Payment ${paymentId} status changed to ${status}`);
 
       return {
@@ -244,12 +205,10 @@ class PaymentService {
   }
 
   /**
-   * ТЕСТОВЫЙ ПЛАТЁЖ (для Expo Go)
-   * Если YooKassa недоступна, используем mock
+   * MOCK ПЛАТЁЖ (Expo Go)
    */
   async testPayment(amount, dealId) {
     try {
-      // Симулируем успешный платёж
       return new Promise((resolve) => {
         setTimeout(() => {
           resolve({
@@ -260,7 +219,7 @@ class PaymentService {
             dealId,
             message: 'Test payment successful (mock)',
           });
-        }, 1500); // Имитируем сетевую задержку
+        }, 1500);
       });
     } catch (error) {
       return { success: false, error: error.message };

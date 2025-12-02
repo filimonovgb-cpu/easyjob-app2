@@ -4,39 +4,32 @@ import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { OrderProvider } from './src/contexts/OrderContext';
-import { PaymentProvider } from './src/contexts/PaymentContext'; // ← ДОБАВИЛИ
+import { PaymentProvider } from './src/contexts/PaymentContext';
+import { DealProvider } from './src/contexts/DealContext';
+
 import { AuthNavigator, MainNavigator } from './src/navigation/AppNavigator';
+
 import './i18n';
 
-// Create QueryClient instance
+// Query Client
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000,
     },
   },
 });
 
-/**
- * Root Navigator Component
- * Определяет, какой навигатор показать:
- * - Онбординг (первый запуск)
- * - Авторизация (не залогинен)
- * - Главное приложение (залогинен)
- */
+// Root Navigator
 const RootNavigator = () => {
   const { isAuthenticated, isLoading } = useAuth();
   const [hasSeenOnboarding, setHasSeenOnboarding] = useState(null);
   const [onboardingLoading, setOnboardingLoading] = useState(true);
 
-  /**
-   * При старте приложения проверяем:
-   * 1. Был ли пройден онбординг
-   * 2. Залогинен ли пользователь
-   */
   useEffect(() => {
     const checkOnboarding = async () => {
       try {
@@ -53,21 +46,21 @@ const RootNavigator = () => {
     checkOnboarding();
   }, []);
 
-  // Загруженияются данные авторизации и онбординга
   if (isLoading || onboardingLoading) {
-    return null; // Или можно показать SplashScreen
+    return null; // здесь можно отрендерить SplashScreen
   }
 
-  // Если онбординг не был пройден — показываем его первым
   if (hasSeenOnboarding === false) {
     return (
       <NavigationContainer>
-        <AuthNavigator isOnboarding={true} onOnboardingComplete={() => setHasSeenOnboarding(true)} />
+        <AuthNavigator
+          isOnboarding={true}
+          onOnboardingComplete={() => setHasSeenOnboarding(true)}
+        />
       </NavigationContainer>
     );
   }
 
-  // Если прошёл онбординг, проверяем авторизацию
   return (
     <NavigationContainer>
       {isAuthenticated ? <MainNavigator /> : <AuthNavigator />}
@@ -75,10 +68,7 @@ const RootNavigator = () => {
   );
 };
 
-/**
- * Main App Component
- * Основной компонент приложения со всеми провайдерами
- */
+// Main App
 export default function App() {
   return (
     <SafeAreaProvider>
@@ -86,9 +76,11 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <OrderProvider>
-            <PaymentProvider>              {/* ← ДОБАВИЛИ СЮДА */}
-              <RootNavigator />
-            </PaymentProvider>             {/* ← ЗАКРЫЛИ СЮДА */}
+            <PaymentProvider>
+              <DealProvider>
+                <RootNavigator />
+              </DealProvider>
+            </PaymentProvider>
           </OrderProvider>
         </AuthProvider>
       </QueryClientProvider>

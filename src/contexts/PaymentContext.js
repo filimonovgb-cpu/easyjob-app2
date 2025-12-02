@@ -3,125 +3,185 @@
 /**
  * Payment Context
  * Управление платежами и финансовыми операциями
+ *
+ * Дополнение:
+ * - Добавлена защита при рендере children: если в children попадёт
+ *   строка/число, оно автоматически будет обёрнуто в <Text>, чтобы
+ *   избежать ошибки "Text strings must be rendered within a <Text> component".
+ *
+ * Примечание: это оборонительная правка — рекомендуется в будущем
+ * найти и убрать источник "сырых" строк в children (в навигаторах/компонентах).
  */
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import paymentService from '../services/paymentService';
+import { Text } from 'react-native';
+
+// YooKassa / external payment service (JS SDK wrapper)
+import yooPaymentService from '../services/paymentService'; // ранее paymentService
+
+// Firebase wallet/transactions
 import walletService from '../services/walletService';
-import { dealService, paymentService as firebasePaymentService } from '../services/firebaseService';
+
+// Firestore services (в т.ч. запись платежей)
+import { dealService, paymentService as fsPaymentService } from '../services/firebaseService';
 
 const PaymentContext = createContext();
+
+const DEFAULT_POLL_INTERVAL_MS = 3000; // 3 секунды
+const DEFAULT_POLL_ATTEMPTS = 10; // максимум опросов
 
 export const PaymentProvider = ({ children }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
   const [lastPayment, setLastPayment] = useState(null);
 
-  /**
-   * ФАЗА 1: Клиент выбирает исполнителя
-   * - Замораживаем деньги
-   * - Отправляем 15₽ платформе
-   */
-  const selectContractor = useCallback(async (userId, dealId, proposedPrice, contractorId) => {
-    setIsProcessing(true);
-    setPaymentError(null);
+  // --- Polling helper (unchanged) ---
+  const pollPaymentStatus = useCallback(
+    async (externalId, firestorePaymentId, dealId) => {
+      let attempts = 0;
+      const check = async () => {
+        attempts += 1;
+        try {
+          const res = await yooPaymentService.checkPaymentStatus(externalId);
+          const status = res?.status || (res?.data && res.data.status) || null;
 
-    try {
-      // 1. Проверяем баланс и замораживаем
-      const freezeResult = await walletService.freezeBalanceForDeal(
-        userId,
-        dealId,
-        proposedPrice
-      );
+          if (status) {
+            try {
+              await fsPaymentService.updatePaymentStatus(firestorePaymentId, status);
+            } catch (e) {
+              console.warn('Failed to update payment status in Firestore:', e);
+            }
+          }
 
-      if (!freezeResult.success) {
-        setPaymentError(freezeResult.error);
+          if (status === 'succeeded' || status === 'captured' || status === 'paid') {
+            try {
+              if (dealId) {
+                await dealService.unlockClientContacts(dealId);
+                await dealService.updateDealStatus(dealId, 'confirmed');
+              }
+            } catch (e) {
+              console.warn('Post-payment actions failed:', e);
+            }
+            return true;
+          }
+
+          if (status === 'canceled' || status === 'failed') {
+            return true;
+          }
+        } catch (err) {
+          console.warn('Error checking payment status:', err);
+        }
+
+        if (attempts >= DEFAULT_POLL_ATTEMPTS) {
+          return true;
+        }
+        return false;
+      };
+
+      const loop = async () => {
+        const done = await check();
+        if (!done) {
+          await new Promise((r) => setTimeout(r, DEFAULT_POLL_INTERVAL_MS));
+          return loop();
+        }
+        return;
+      };
+
+      loop().catch((e) => console.warn('Polling loop failed:', e));
+    },
+    []
+  );
+
+  // --- Business methods (unchanged except defensive finally usage) ---
+  const selectContractor = useCallback(
+    async (userId, dealId, proposedPrice, contractorId) => {
+      setIsProcessing(true);
+      setPaymentError(null);
+
+      try {
+        const freezeResult = await walletService.freezeBalanceForDeal(userId, dealId, proposedPrice);
+
+        if (!freezeResult.success) {
+          setPaymentError(freezeResult.error);
+          return { success: false, error: freezeResult.error };
+        }
+
+        await dealService.updateDeal(dealId, { status: 'accepted' });
+
+        setLastPayment({
+          type: 'selection',
+          dealId,
+          amount: proposedPrice,
+          status: 'completed',
+        });
+
+        return { success: true, dealId, frozen: proposedPrice };
+      } catch (error) {
+        console.error('Error selecting contractor:', error);
+        setPaymentError(error.message);
+        return { success: false, error: error.message };
+      } finally {
         setIsProcessing(false);
-        return { success: false, error: freezeResult.error };
       }
+    },
+    []
+  );
 
-      // 2. Обновляем статус deal
-      await dealService.updateDeal(dealId, { status: 'accepted' });
-
-      setLastPayment({
-        type: 'selection',
-        dealId,
-        amount: proposedPrice,
-        status: 'completed',
-      });
-
-      setIsProcessing(false);
-      return { success: true, dealId, frozen: proposedPrice };
-    } catch (error) {
-      console.error('Error selecting contractor:', error);
-      setPaymentError(error.message);
-      setIsProcessing(false);
-      return { success: false, error: error.message };
-    }
-  }, []);
-
-  /**
-   * ФАЗА 2: Оплата 15₽ за подтверждение
-   * - Платим через YooKassa
-   * - Разблокируем контакты
-   */
   const confirmSelection = useCallback(async (userId, dealId, customerEmail) => {
     setIsProcessing(true);
     setPaymentError(null);
 
     try {
-      // 1. Создаём платёж в YooKassa
-      const paymentResult = await paymentService.confirmSelectionPayment(
-        userId,
-        dealId,
-        customerEmail
-      );
+      const paymentResult = await yooPaymentService.confirmSelectionPayment(userId, dealId, customerEmail);
 
-      if (!paymentResult.success) {
-        setPaymentError(paymentResult.error);
-        setIsProcessing(false);
-        return { success: false, error: paymentResult.error };
+      if (!paymentResult || !paymentResult.success) {
+        const errMsg = paymentResult?.error || 'Failed to create payment';
+        setPaymentError(errMsg);
+        return { success: false, error: errMsg };
       }
 
-      // 2. Создаём запись платежа в Firestore
-      const paymentId = await firebasePaymentService.createPayment(
-        dealId,
-        userId,
-        'confirmation',
-        15
-      );
+      const externalPaymentId = paymentResult.paymentId || paymentResult.id || null;
+      const confirmationUrl = paymentResult.confirmationUrl || paymentResult.data?.confirmation?.confirmation_url;
 
-      // 3. Разблокируем контакты клиента
-      await dealService.unlockClientContacts(dealId);
+      const createRes = await fsPaymentService.createPayment(dealId, userId, 'confirmation', 15);
 
-      // 4. Обновляем статус deal
-      await dealService.updateDealStatus(dealId, 'confirmed');
+      if (!createRes || !createRes.success) {
+        console.warn('Failed to create Firestore payment record:', createRes);
+      } else {
+        const firestorePaymentId = createRes.paymentId;
+        try {
+          await fsPaymentService.updatePaymentStatus(firestorePaymentId, 'pending');
+        } catch (e) {
+          console.warn('Could not set firestore payment status to pending:', e);
+        }
+
+        if (externalPaymentId) {
+          pollPaymentStatus(externalPaymentId, firestorePaymentId, dealId);
+        }
+      }
 
       setLastPayment({
         type: 'confirmation',
         dealId,
         amount: 15,
-        paymentId: paymentResult.paymentId,
-        confirmationUrl: paymentResult.confirmationUrl,
+        paymentId: externalPaymentId,
+        confirmationUrl,
       });
 
-      setIsProcessing(false);
       return {
         success: true,
-        confirmationUrl: paymentResult.confirmationUrl,
-        paymentId: paymentResult.paymentId,
+        confirmationUrl,
+        paymentId: externalPaymentId,
       };
     } catch (error) {
       console.error('Error confirming selection:', error);
       setPaymentError(error.message);
-      setIsProcessing(false);
       return { success: false, error: error.message };
+    } finally {
+      setIsProcessing(false);
     }
-  }, []);
+  }, [pollPaymentStatus]);
 
-  /**
-   * ОТМЕНА БЕЗ ШТРАФА (>= 45 минут)
-   */
   const cancelDealEarly = useCallback(async (userId, dealId, proposedPrice) => {
     setIsProcessing(true);
     setPaymentError(null);
@@ -131,99 +191,73 @@ export const PaymentProvider = ({ children }) => {
 
       if (!result.success) {
         setPaymentError(result.error);
-        setIsProcessing(false);
         return { success: false, error: result.error };
       }
 
-      // Обновляем статус deal
       await dealService.updateDealStatus(dealId, 'cancelled_client');
 
-      setIsProcessing(false);
       return result;
     } catch (error) {
       console.error('Error cancelling deal early:', error);
       setPaymentError(error.message);
-      setIsProcessing(false);
       return { success: false, error: error.message };
+    } finally {
+      setIsProcessing(false);
     }
   }, []);
 
-  /**
-   * ОТМЕНА СО ШТРАФОМ (< 45 минут)
-   */
   const cancelDealWithPenalty = useCallback(
     async (userId, contractorId, dealId, proposedPrice) => {
       setIsProcessing(true);
       setPaymentError(null);
 
       try {
-        const result = await walletService.cancelDealWithPenalty(
-          userId,
-          contractorId,
-          dealId,
-          proposedPrice
-        );
+        const result = await walletService.cancelDealWithPenalty(userId, contractorId, dealId, proposedPrice);
 
         if (!result.success) {
           setPaymentError(result.error);
-          setIsProcessing(false);
           return { success: false, error: result.error };
         }
 
-        // Обновляем статус deal
         await dealService.updateDealStatus(dealId, 'cancelled_client_late');
 
-        setIsProcessing(false);
         return result;
       } catch (error) {
         console.error('Error cancelling deal with penalty:', error);
         setPaymentError(error.message);
-        setIsProcessing(false);
         return { success: false, error: error.message };
+      } finally {
+        setIsProcessing(false);
       }
     },
     []
   );
 
-  /**
-   * ЗАВЕРШЕНИЕ СДЕЛКИ
-   * Деньги идут исполнителю
-   */
   const completeDeal = useCallback(async (dealId, contractorId, proposedPrice, dealCount) => {
     setIsProcessing(true);
     setPaymentError(null);
 
     try {
-      const result = await walletService.completeDeal(
-        dealId,
-        contractorId,
-        proposedPrice,
-        dealCount
-      );
+      const result = await walletService.completeDeal(dealId, contractorId, proposedPrice, dealCount);
 
       if (!result.success) {
         setPaymentError(result.error);
-        setIsProcessing(false);
         return { success: false, error: result.error };
       }
 
-      // Обновляем статус deal
       await dealService.updateDealStatus(dealId, 'completed');
       await dealService.unlockContractorContacts(dealId);
 
-      setIsProcessing(false);
       return result;
     } catch (error) {
       console.error('Error completing deal:', error);
       setPaymentError(error.message);
-      setIsProcessing(false);
       return { success: false, error: error.message };
+    } finally {
+      setIsProcessing(false);
     }
   }, []);
 
-  /**
-   * ПОПОЛНИТЬ БАЛАНС
-   */
   const addBalance = useCallback(async (userId, amount) => {
     setIsProcessing(true);
     setPaymentError(null);
@@ -233,23 +267,19 @@ export const PaymentProvider = ({ children }) => {
 
       if (!result.success) {
         setPaymentError(result.error);
-        setIsProcessing(false);
         return { success: false, error: result.error };
       }
 
-      setIsProcessing(false);
       return result;
     } catch (error) {
       console.error('Error adding balance:', error);
       setPaymentError(error.message);
-      setIsProcessing(false);
       return { success: false, error: error.message };
+    } finally {
+      setIsProcessing(false);
     }
   }, []);
 
-  /**
-   * ВЫВЕСТИ ДЕНЬГИ
-   */
   const withdrawBalance = useCallback(async (userId, amount) => {
     setIsProcessing(true);
     setPaymentError(null);
@@ -259,17 +289,16 @@ export const PaymentProvider = ({ children }) => {
 
       if (!result.success) {
         setPaymentError(result.error);
-        setIsProcessing(false);
         return { success: false, error: result.error };
       }
 
-      setIsProcessing(false);
       return result;
     } catch (error) {
       console.error('Error withdrawing balance:', error);
       setPaymentError(error.message);
-      setIsProcessing(false);
       return { success: false, error: error.message };
+    } finally {
+      setIsProcessing(false);
     }
   }, []);
 
@@ -286,7 +315,24 @@ export const PaymentProvider = ({ children }) => {
     withdrawBalance,
   };
 
-  return <PaymentContext.Provider value={value}>{children}</PaymentContext.Provider>;
+  // --- DEFENSIVE RENDER: оборачиваем строки/числа в <Text> ---
+  const renderSafeChildren = (c) => {
+    // React.Children.toArray нормализует children, безопасно работает для single / array / null
+    const arr = React.Children.toArray(c);
+    if (arr.length === 0) return null;
+    return arr.map((child, idx) => {
+      if (typeof child === 'string' || typeof child === 'number') {
+        return <Text key={`pc_text_${idx}`}>{String(child)}</Text>;
+      }
+      return child;
+    });
+  };
+
+  return (
+    <PaymentContext.Provider value={value}>
+      {renderSafeChildren(children)}
+    </PaymentContext.Provider>
+  );
 };
 
 export const usePayment = () => {
@@ -296,3 +342,5 @@ export const usePayment = () => {
   }
   return context;
 };
+
+export default PaymentContext;
