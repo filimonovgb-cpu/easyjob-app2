@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 
-// Screens
+// Core screens
 import { WelcomeScreen } from '../screens/WelcomeScreen';
 import { RegistrationScreen } from '../screens/RegistrationScreen';
 import { SmsAuthScreen } from '../screens/SmsAuthScreen';
@@ -16,12 +16,15 @@ import { OrderDetailScreen } from '../screens/OrderDetailScreen';
 import { ProfessionalDetailScreen } from '../screens/ProfessionalDetailScreen';
 import OnboardingScreen from '../screens/Onboarding/OnboardingScreen';
 
+// NEW (Offers Module)
+import ClientOrderOffersScreen from '../screens/Offers/ClientOrderOffersScreen';
+import ContractorOffersScreen from '../screens/Offers/ContractorOffersScreen';
+
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 /**
- * Main Tab Navigator
- * Нижняя табулята навигация: Home, Orders, Profile
+ * TAB NAVIGATOR (Home / Orders / Profile)
  */
 const MainTabs = () => {
   const { t } = useTranslation();
@@ -63,11 +66,13 @@ const MainTabs = () => {
         component={HomeScreen}
         options={{ title: t('navigation.home') }}
       />
+
       <Tab.Screen
         name="Orders"
         component={OrdersScreen}
         options={{ title: t('navigation.orders') }}
       />
+
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
@@ -78,8 +83,7 @@ const MainTabs = () => {
 };
 
 /**
- * Auth Stack Navigator
- * Экраны авторизации: Welcome, Registration, SmsAuth, Onboarding
+ * AUTH NAVIGATOR
  */
 export const AuthNavigator = ({ isOnboarding = false, onOnboardingComplete = null }) => {
   return (
@@ -108,13 +112,7 @@ export const AuthNavigator = ({ isOnboarding = false, onOnboardingComplete = nul
         />
       )}
 
-      <Stack.Screen
-        name="Welcome"
-        component={WelcomeScreen}
-        options={{
-          headerShown: false,
-        }}
-      />
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
 
       <Stack.Screen
         name="Registration"
@@ -140,8 +138,8 @@ export const AuthNavigator = ({ isOnboarding = false, onOnboardingComplete = nul
 };
 
 /**
- * Main Stack Navigator
- * Главное приложение после авторизации
+ * MAIN NAVIGATOR
+ * (основная часть приложения)
  */
 export const MainNavigator = () => {
   const { t } = useTranslation();
@@ -153,42 +151,55 @@ export const MainNavigator = () => {
         headerBackTitleVisible: false,
       }}
     >
-      {/* Табулята навигация: Home, Orders, Profile */}
+      {/* Tabs (Home, Orders, Profile) */}
       <Stack.Screen
         name="MainTabs"
         component={MainTabs}
-        options={{
-          headerShown: false,
-        }}
+        options={{ headerShown: false }}
       />
 
-      {/* Экран создания заказа */}
+      {/* Order creation */}
       <Stack.Screen
         name="CreateOrder"
         component={CreateOrderScreen}
         options={{
           title: t('screens.createOrder') || 'Создать заказ',
-          headerShown: true,
         }}
       />
 
-      {/* Экран деталей заказа */}
+      {/* Order detail */}
       <Stack.Screen
         name="OrderDetail"
         component={OrderDetailScreen}
         options={{
           title: t('screens.orderDetail') || 'Детали заказа',
-          headerShown: true,
         }}
       />
 
-      {/* Экран деталей специалиста */}
+      {/* Professional detail */}
       <Stack.Screen
         name="ProfessionalDetail"
         component={ProfessionalDetailScreen}
         options={{
           title: t('screens.professionalDetail') || 'Профиль специалиста',
-          headerShown: true,
+        }}
+      />
+
+      {/* --- NEW OFFERS SCREENS --- */}
+
+      <Stack.Screen
+        name="ClientOrderOffers"
+        component={ClientOrderOffersScreen}
+        options={{
+          title: 'Предложения по заказу',
+        }}
+      />
+
+      <Stack.Screen
+        name="ContractorOffers"
+        component={ContractorOffersScreen}
+        options={{
+          title: 'Ваши заявки',
         }}
       />
     </Stack.Navigator>

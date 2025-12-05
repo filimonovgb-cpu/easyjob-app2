@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import storageService from '../services/storageService';
 import { ordersAPI } from '../services/api';
 import { useAuth } from './AuthContext';
+import matchService from '../services/matchService';
 
 const OrderContext = createContext();
 
@@ -36,14 +37,22 @@ export const OrderProvider = ({ children }) => {
         userName: `${user?.firstName} ${user?.lastName}`,
         userPhone: user?.phone
       });
-      
+
       if (response.success) {
         const newOrders = [...orders, response.order];
         setOrders(newOrders);
         await storageService.saveOrders(newOrders);
+
+        // 🔥 ВАЖНО: запуск matchService после создания заказа
+        try {
+          await matchService.startMatching(response.order.id);
+        } catch (mErr) {
+          console.warn('Match service failed:', mErr);
+        }
+
         return { success: true, order: response.order };
       }
-      
+
       return { success: false };
     } catch (error) {
       console.error('Error creating order:', error);
@@ -54,7 +63,7 @@ export const OrderProvider = ({ children }) => {
   const updateOrderStatus = async (orderId, status) => {
     try {
       const response = await ordersAPI.updateStatus(orderId, status);
-      
+
       if (response.success) {
         const updatedOrders = orders.map(order =>
           order.id === orderId ? { ...order, status } : order
@@ -63,7 +72,7 @@ export const OrderProvider = ({ children }) => {
         await storageService.saveOrders(updatedOrders);
         return true;
       }
-      
+
       return false;
     } catch (error) {
       console.error('Error updating order status:', error);

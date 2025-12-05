@@ -1,3 +1,4 @@
+// src/screens/OrdersScreen.js
 import React, { useState } from 'react';
 import {
   View,
@@ -11,11 +12,20 @@ import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useOrders } from '../contexts/OrderContext';
 import { OrderCard } from '../components/order/OrderCard';
+import { useAuth } from '../contexts/AuthContext';
+
+// Hook for contractor offers (assumes you've added it)
+import { useOffersForContractor } from '../hooks/useOffers';
 
 export const OrdersScreen = ({ navigation }) => {
   const { t } = useTranslation();
   const { orders, isLoading, refreshOrders } = useOrders();
+  const { user, role } = useAuth();
   const [filter, setFilter] = useState('all');
+
+  // Offers for contractor - used to show badge and quick access for executors
+  const { offers = [], loading: offersLoading } = useOffersForContractor(user?.id);
+  const incomingCount = (offers || []).filter(o => o.status === 'pending').length;
 
   const filters = [
     { key: 'all', label: t('allOrders'), icon: 'list' },
@@ -80,12 +90,30 @@ export const OrdersScreen = ({ navigation }) => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>{t('myOrders')}</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={handleCreateOrder}
-        >
-          <Ionicons name="add-circle" size={32} color="#32B8C6" />
-        </TouchableOpacity>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {/* If executor — show quick access to ContractorOffers with badge */}
+          {role === 'executor' && (
+            <TouchableOpacity
+              style={styles.offersIconWrap}
+              onPress={() => navigation.navigate('ContractorOffers', { contractorId: user.id })}
+            >
+              <Ionicons name="notifications" size={30} color="#32B8C6" />
+              {incomingCount > 0 && (
+                <View style={styles.offersBadge}>
+                  <Text style={styles.offersBadgeText}>{incomingCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={handleCreateOrder}
+          >
+            <Ionicons name="add-circle" size={36} color="#32B8C6" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -145,6 +173,37 @@ const styles = StyleSheet.create({
   },
   addButton: {
     padding: 4,
+    marginLeft: 8,
+  },
+  offersIconWrap: {
+    marginRight: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  offersBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: '#FF3B30',
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  offersBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   filtersList: {
     maxHeight: 60,
